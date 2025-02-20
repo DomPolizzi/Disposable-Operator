@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pod-restart-operator
+  namespace: pod-restart-watcher
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pod-restart-operator
+  template:
+    metadata:
+      labels:
+        app: pod-restart-operator
+    spec:
+      serviceAccountName: pod-restart-operator-sa
+      containers:
+      - name: pod-restart-operator
+        image: ## THIS WILL BE YOUR OPERATOR IMAGE, REPLACE THIS WITH REGISTRY/IMAGE:TAG
+        imagePullPolicy: Always
+      imagePullSecrets:
+      - name: operator-registry

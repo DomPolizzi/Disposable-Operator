@@ -1,0 +1,125 @@
+variables:
+  IMAGE_NAME: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+  ENV_IMAGE: # SPECIFY REGISTRY HERE
+  DIND_IMAGE: docker:27.3
+  GO_IMAGE: golang:1.20
+
+.common: &common
+  image: $DIND_IMAGE
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+
+.shared_runner_config: &shared_runner_config
+  <<: *common
+  services:
+    - ${DIND_IMAGE}-dind
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_CERTDIR: "/certs"
+
+.local_runner_config: &local_runner_config
+  <<: *common
+  variables:
+    DOCKER_HOST: unix:///var/run/docker.sock
+
+.go-cache:
+  variables:
+    GOPATH: $CI_PROJECT_DIR/go/app/.go
+  cache:
+    paths:
+      - go/app/.go/pkg/mod/
+
+stages:
+  - lint
+  - test
+  - build
+#  - deploy
+
+lint:
+  image: golangci/golangci-lint:latest
+  stage: lint
+  allow_failure: false
+  script:
+    - cd go/app
+    - golangci-lint run -v --timeout=3m
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "pipeline"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event' || $CI_PIPELINE_SOURCE == 'web'
+      changes:
+        - go/**/*
+      when: on_success
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS || $CI_PIPELINE_SOURCE == 'merge_request_event'
+      when: never
+    - when: never
+
+test:
+  stage: test
+  image: ${GO_IMAGE}
+  script:
+    - cd go/app
+    - go fmt $(go list ./... | grep -v /vendor/)
+    - go vet $(go list ./... | grep -v /vendor/)
+    - go test -race $(go list ./... | grep -v /vendor/)
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "pipeline"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event' || $CI_PIPELINE_SOURCE == 'web'
+      changes:
+        - go/**/*
+      when: on_success
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS || $CI_PIPELINE_SOURCE == 'merge_request_event'
+      when: never
+    - when: never
+
+Build & Tag Operator:
+  stage: build
+  extends:
+    - .shared_runner_config
+  script:
+    - cd go/app
+    - |
+      if [[ "$CI_COMMIT_BRANCH" == "$CI_DEFAULT_BRANCH" ]]; then
+        tag=""
+        echo "Running on default branch '$CI_DEFAULT_BRANCH': tag = 'latest'"
+      else
+        tag=":$CI_COMMIT_REF_SLUG"
+        echo "Running on branch '$CI_COMMIT_BRANCH': tag = $tag"
+      fi
+    - echo "Docker Image Built, Pushing to Registry"
+    - docker build --pull -t "$CI_REGISTRY_IMAGE${tag}" .
+    - docker push "$CI_REGISTRY_IMAGE${tag}"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "pipeline"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event' || $CI_PIPELINE_SOURCE == 'web'
+      changes:
+        - go/**/*
+      when: on_success
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS || $CI_PIPELINE_SOURCE == 'merge_request_event'
+      when: never
+    - when: never
+
+deploy-operator:
+  image: $ENV_IMAGE
+  stage: deploy
+  tags:
+    - disposable-envs
+  extends:
+    - .shared_runner_config
+  script:
+    # Deploy the operator to the Kubernetes ENV
+    - kubectl apply -f kubernetes/
+  when: manual
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "pipeline"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event' || $CI_PIPELINE_SOURCE == 'web'
+      when: manual
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS || $CI_PIPELINE_SOURCE == 'merge_request_event'
+      when: never
+    - when: manual
+  environment:
+    name: production
+
+

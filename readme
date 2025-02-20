@@ -1,0 +1,23 @@
+# Disposable Operator
+This is a simple operator that will scale down pods in deployments if it errors out more than 3 times.
+
+## How to run
+```
+go get k8s.io/client-go@v0.23.5 
+```
+View the Gitlab Pipeline and modify the files slightly.
+- [main.go](go/app/cmd/manager/main.go) - change the CUSTOM_NAMESPACE to the desired namespace
+- [podrestart_controller.go](gp/app/pkg/controller/podrestart/podrestart_controller.go) - Handles the Retry Count and the threshold for the retry count.
+- [0-secret.yml](kubernetes/0-secret.yml) - Add your registry dockerconfig file
+
+
+To Recompile:
+``` 
+GOOS=linux GOARCH=amd64 go build -o disposableOperator cmd/manager/main.go
+```  
+
+Current thrshold for the GO operator is set in the pkg/controller/podrestart/podrestart_controller.go file. 
+
+```
+const RESTART_THRESHOLD = 5
+```

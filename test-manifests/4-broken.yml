@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: portal-test
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crashloop-6
+  namespace: portal-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: crashloop-6
+  template:
+    metadata:
+      labels:
+        app: crashloop-6
+    spec:
+      containers:
+        - name: crashloop-container
+          image: busybox
+          command:
+            - /bin/sh
+          args:
+            - -c
+            - exit 1

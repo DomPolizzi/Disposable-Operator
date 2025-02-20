@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pod-restart-operator
+  namespace: pod-restart-watcher
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pod-restart-operator
+  template:
+    metadata:
+      labels:
+        app: pod-restart-operator
+    spec:
+      serviceAccountName: pod-restart-operator-sa
+      containers:
+      - name: go-restart-operator
+        image: go-restart-operator:latest
+        imagePullPolicy: IfNotPresent
